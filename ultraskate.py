@@ -11,6 +11,8 @@ import re
 import urllib
 import pickle
 import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.animation as animation
 
 from bs4 import BeautifulSoup
 
@@ -44,7 +46,7 @@ def getstats(skaters):
         for idx, splitTime in enumerate(splitTimes):
             hh,mm,ss = splitTime.split(':')
             split.append(float(hh)*60 + float(mm) + float(ss)/60)
-            lap.append(laps[idx])
+            lap.append(int(laps[idx]))
         
         finalDistance = float(re.findall(r'<b>(\d+\.\d+)</b>',skaterhtml)[0])    
         averageLap = re.findall(r'<b>(\d+\:\d+:?\d+?)</b>',skaterhtml)[2]
@@ -64,10 +66,10 @@ def getstats(skaters):
         
         distance.insert(0,0)
         time.insert(0,0)
-        skater['distances'] = distance
-        skater['times'] = time
-        skater['laps'] = lap
-        skater['splits'] = split
+        skater['distances'] = np.array(distance)
+        skater['times'] = np.array(time)
+        skater['laps'] = np.array(lap)
+        skater['splits'] = np.array(split)
     
     return
 
@@ -91,7 +93,6 @@ def getskaters():
     return skaters
 
 
-
 def pltTimeVsDist(skaters):
     fig, ax1 = plt.subplots(1,1)
     for skater in skaters:
@@ -107,8 +108,7 @@ def pltTimeVsDist(skaters):
         label = skater['name'] + '  ' + "%.1f" % distance[-1] +'mi'
         ax1.plot(time,distance,'k-',alpha=0.1,label=label)
         ax1.plot(time[-1],distance[-1],'r.',markersize=3)
-#        ax1.text(time[-1]+0.2,distance[-1],skater['name'])
-    
+#        ax1.text(time[-1]+0.2,distance[-1],skater['name'])    
     
     #ax1.legend()
     ax1.set_title('Ultra Skaters')
@@ -129,41 +129,81 @@ def pltDistHist(skaters):
     ax2.set_xlabel('number of skaters')
     ax2.set_ylabel('distance [miles]')
     plt.show()
+
     
-def pltLapHist(skater):
+def pltSplitHist(skater):
     fig, ax1 = plt.subplots(1,1)
     ax1.hist(skater['splits'], bins = 30, range = (0,30))
     ax1.set_title(skater['name'])
     plt.show()
 
+def pltSplitVsTime(skater,ax1):
     
+# start and end times do not correspond to laps remove
+    times = skater['times'][1:-1]            
+    ax1.plot(times,1.46/skater['splits']*60,'.',label=skater['name'])
+    
+# make pretty
+    ax1.set_ylim([0,16])
+    ax1.set_ylabel('lap speed [miles/hr]')
+    ax1.set_xlabel('race time [hours]')
+    ax1.set_xlim([0,24])
+    ax1.grid()
+    ax1.set_title(skater['name'])
+
 # main
 
-# load skater data
-try:
-    pkl_file = open('skaters.pkl', 'rb')
-    skaters = pickle.load(pkl_file)
-    pkl_file.close() 
-except IOError: 
-    print('Skater lap data not found. Downloading data from web')
-    skaters = getskaters()
-    getstats(skaters)
-    output = open('skaters.pkl', 'wb')
-    pickle.dump(skaters, output)
-    output.close()
+def loadSkaterLapData():
+    # load skater lap data
+    try:
+        pkl_file = open('skaters.pkl', 'rb')
+        skaters = pickle.load(pkl_file)
+        pkl_file.close() 
+    except IOError: 
+        print('Skater lap data not found. Downloading data from web')
+        skaters = getskaters()
+        getstats(skaters)
+        output = open('skaters.pkl', 'wb')
+        pickle.dump(skaters, output)
+        output.close()
+        
+    return skaters
 
 
-pltTimeVsDist(skaters)
+# main
+    
+skaters = loadSkaterLapData()
 
-pltDistHist(skaters)
-
-for skater in skaters:
-    pltLapHist(skater)
-
-
-
+# make summary plots
+#pltTimeVsDist(skaters)
+#pltDistHist(skaters)
 
 
+# Movie Settings
+video_file = "skater.mp4"
+fps = 0.5
+
+# Output video writer
+FFMpegWriter = animation.writers['ffmpeg']
+metadata = dict(title='Average Lap Velocity', artist='Matplotlib', comment='Movie support!')
+writer = FFMpegWriter(fps=fps, metadata=metadata)
+
+
+fig, ax = plt.subplots(1,1)
+with writer.saving(fig, video_file, 200):
+    for skater in skaters[0:50]:
+        ax.clear()
+        pltSplitVsTime(skater,ax)        
+        writer.grab_frame()
+
+
+fig, ax = plt.subplots(1,1)
+for skater in skaters[0:5]:
+    pltSplitVsTime(skater,ax)
+    
+ax.set_title('top 5 skaters')
+plt.legend()
+plt.show()
 
 # colorado 
 #skaters['1 Joe'] = 'http://jms.racetecresults.com/MyResults.aspx?uid=16370-352-1-141134'
